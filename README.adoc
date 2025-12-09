@@ -3,3 +3,5 @@
 Tests checking various reported differences between Hibernate and EclipseLink (as the default provider for Liberty) as an analysis of migrating to usage of Hibernate in Liberty.
 
 The tests assume a running SQL Server instance based on the container definitions from the http://github.com/hibernate/hibernate-orm[Hibernate ORM] project.
+
+Change `ormVersion` in `build.gradle` to test with various versions.
