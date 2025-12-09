@@ -1,0 +1,3 @@
+== Hibernate in Liberty
+
+Tests checking various reported differences between Hibernate and EclipseLink (as the default provider for Liberty) as an analysis of migrating to uisage of Hibernate in Liberty
