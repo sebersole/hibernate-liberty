@@ -1,56 +1,98 @@
 package org.hibernate.test.liberty;
 
 import java.sql.Statement;
+import java.util.List;
+import java.util.function.Consumer;
 
-import org.hibernate.query.criteria.HibernateCriteriaBuilder;
-import org.hibernate.query.criteria.JpaRoot;
+import org.hibernate.Session;
+import org.hibernate.boot.Metadata;
+import org.hibernate.boot.MetadataSources;
+import org.hibernate.boot.registry.BootstrapServiceRegistryBuilder;
+import org.hibernate.boot.registry.StandardServiceRegistry;
+import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
+import org.hibernate.cfg.JpaComplianceSettings;
+import org.hibernate.cfg.SchemaToolingSettings;
+import org.hibernate.query.SemanticException;
+import org.hibernate.query.sqm.StrictJpaComplianceViolation;
 
 import org.hibernate.testing.orm.junit.DomainModel;
-import org.hibernate.testing.orm.junit.FailureExpected;
+import org.hibernate.testing.orm.junit.ExpectedException;
+import org.hibernate.testing.orm.junit.ServiceRegistryProducer;
 import org.hibernate.testing.orm.junit.SessionFactory;
 import org.hibernate.testing.orm.junit.SessionFactoryScope;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import jakarta.persistence.Tuple;
 
+import static java.lang.Boolean.FALSE;
+import static java.lang.Boolean.TRUE;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
 
-/**
- * @author Steve Ebersole
- */
+/// Also an analysis of id-31 which is a general case of function use.
+///
+/// @implNote This actually, I think, comes down to Hibernate's JpaCompliance.
+/// Still waiting on confirmation of that.
+/// Assuming that is the case, the workaround is to simply disable query compliance.
+///
+/// @author Steve Ebersole
+@AnalysisItem( id = 24, feature = "JPQL FUNCTION(...)", description = "Dialect-specific function support",
+		behavioralDifference = "EclipseLink accepts DB functions directly; Hibernate needs explicit registration")
+@AnalysisItem( id = 31, feature = "DB Functions", description = "Dialect dependency",
+		behavioralDifference = "EclipseLink accepts DB functions directly; Hibernate needs dialect support")
+@TestInstance( TestInstance.Lifecycle.PER_METHOD )
+@ParameterizedClass
+@MethodSource("complianceValues")
 @DomainModel(annotatedClasses = Book.class)
 @SessionFactory
-public class QueryFunctionTests {
-	@Test
-	@AnalysisItem( id = 31, feature = "DB Functions", description = "Dialect dependency",
-			behavioralDifference = "EclipseLink accepts DB functions directly; Hibernate needs dialect support")
-	void testSelectionHql(SessionFactoryScope factoryScope) {
-		factoryScope.inTransaction( (session) -> {
-			var result = session.createQuery( "select id, dbo.constant_number() from Book", Tuple.class ).list();
-			assertThat( result ).hasSize( 1 );
-			assertThat( result.getFirst().get( 0 ) ).isEqualTo( 1 );
-			assertThat( result.getFirst().get( 1 ) ).isEqualTo( 1 );
-		} );
+public class QueryFunctionTests implements ServiceRegistryProducer {
+	public static List<Boolean> complianceValues() {
+		return List.of( FALSE, TRUE );
+	}
+
+	private final boolean complianceEnabled;
+
+	public QueryFunctionTests(boolean complianceEnabled) {
+		this.complianceEnabled = complianceEnabled;
+	}
+
+	@Override
+	public StandardServiceRegistry produceServiceRegistry(StandardServiceRegistryBuilder standardServiceRegistryBuilder) {
+		return new StandardServiceRegistryBuilder()
+				.applySetting( JpaComplianceSettings.JPA_QUERY_COMPLIANCE, complianceEnabled )
+				.build();
+	}
+
+	@Override
+	public void prepareBootstrapRegistryBuilder(BootstrapServiceRegistryBuilder bootstrapServiceRegistryBuilder) {
+		// nothing to do
+	}
+
+	private void inSession(boolean complianceEnabled, Consumer<Session> action) {
+		inSession( true, complianceEnabled, action );
+	}
+
+	private void inSession(boolean createSchema, boolean complianceEnabled, Consumer<Session> action) {
+		final StandardServiceRegistryBuilder registryBuilder = new StandardServiceRegistryBuilder()
+				.applySetting( SchemaToolingSettings.HBM2DDL_AUTO, createSchema ? "create-drop" : "" )
+				.applySetting( JpaComplianceSettings.JPA_QUERY_COMPLIANCE, complianceEnabled );
+		try (var registry = registryBuilder.build()) {
+			final Metadata metadata = new MetadataSources( registry ).addAnnotatedClasses( Book.class ).buildMetadata();
+			try (var sessionFactory = metadata.getSessionFactoryBuilder().build()) {
+				try (var session = sessionFactory.openSession()) {
+					action.accept( session );
+				}
+			}
+		}
 	}
 
 	@Test
-	@AnalysisItem( id = 31, feature = "DB Functions", description = "Dialect dependency",
-			behavioralDifference = "EclipseLink accepts DB functions directly; Hibernate needs dialect support")
-	void testSelectionHql2(SessionFactoryScope factoryScope) {
-		factoryScope.inTransaction( (session) -> {
-			var result = session.createQuery( "select id, dbo.multiplied_number(2) from Book", Tuple.class ).list();
-			assertThat( result ).hasSize( 1 );
-			assertThat( result.getFirst().get( 0 ) ).isEqualTo( 1 );
-			assertThat( result.getFirst().get( 1 ) ).isEqualTo( 4 );
-		} );
-	}
-
-	@Test
-	@AnalysisItem( id = 24, feature = "JPQL FUNCTION(...)", description = "Dialect-specific function support",
-			behavioralDifference = "EclipseLink accepts DB functions directly; Hibernate needs explicit registration")
-	void testSelectionHql3(SessionFactoryScope factoryScope) {
+	void testCompliantSelection(SessionFactoryScope factoryScope) {
 		factoryScope.inTransaction( (session) -> {
 			var result = session.createQuery( "select id, function( 'dbo.multiplied_number' as integer, 2 ) from Book", Tuple.class ).list();
 			assertThat( result ).hasSize( 1 );
@@ -60,7 +102,7 @@ public class QueryFunctionTests {
 	}
 
 	@Test
-	void testSelectionCriteria(SessionFactoryScope factoryScope) {
+	void testFunctionNoArgSelectionCriteria(SessionFactoryScope factoryScope) {
 		factoryScope.inTransaction( (session) -> {
 			var criteriaBuilder = session.getCriteriaBuilder();
 			var criteria = criteriaBuilder.createQuery( Tuple.class );
@@ -76,7 +118,7 @@ public class QueryFunctionTests {
 	}
 
 	@Test
-	void testSelectionCriteria2(SessionFactoryScope factoryScope) {
+	void testFunctionArgSelectionCriteria(SessionFactoryScope factoryScope) {
 		factoryScope.inTransaction( (session) -> {
 			var criteriaBuilder = session.getCriteriaBuilder();
 			var criteria = criteriaBuilder.createQuery( Tuple.class );
@@ -92,35 +134,65 @@ public class QueryFunctionTests {
 	}
 
 	@Test
-	@AnalysisItem( id = 31, feature = "DB Functions", description = "Dialect dependency",
-			behavioralDifference = "EclipseLink accepts DB functions directly; Hibernate needs dialect support")
-	void testOrderByHql(SessionFactoryScope factoryScope) {
+	void testNoArgFunctionSelection(SessionFactoryScope factoryScope) {
 		factoryScope.inTransaction( (session) -> {
-			session.createQuery( "from Book order by dbo.constant_number()" ).list();
+			try {
+				var result = session.createQuery( "select id, dbo.constant_number() from Book", Tuple.class ).list();
+				assertThat( result ).hasSize( 1 );
+				assertThat( result.getFirst().get( 0 ) ).isEqualTo( 1 );
+				assertThat( result.getFirst().get( 1 ) ).isEqualTo( 1 );
+
+				if ( complianceEnabled ) {
+					fail( "Expecting a failure as compliance was enabled" );
+				}
+			}
+			catch (IllegalArgumentException e) {
+				assertThat( complianceEnabled ).isTrue();
+				assertThat( e.getCause() ).isInstanceOf( StrictJpaComplianceViolation.class );
+			}
+			catch (StrictJpaComplianceViolation complianceViolation) {
+				assertThat( complianceEnabled ).isTrue();
+			}
 		} );
 	}
 
 	@Test
-	@AnalysisItem( id = 31, feature = "DB Functions", description = "Dialect dependency",
-			behavioralDifference = "EclipseLink accepts DB functions directly; Hibernate needs dialect support")
-	void testOrderByHql2(SessionFactoryScope factoryScope) {
+	void tryArgFunctionSelection(SessionFactoryScope factoryScope) {
 		factoryScope.inTransaction( (session) -> {
-			session.createQuery( "from Book order by dbo.multiplied_number(2)" ).list();
+			try {
+				var result = session.createQuery( "select id, dbo.multiplied_number(2) from Book", Tuple.class ).list();
+				assertThat( result ).hasSize( 1 );
+				assertThat( result.getFirst().get( 0 ) ).isEqualTo( 1 );
+				assertThat( result.getFirst().get( 1 ) ).isEqualTo( 4 );
+
+				if ( complianceEnabled ) {
+					fail( "Expecting a failure as cpompliance was enabled" );
+				}
+			}
+			catch (IllegalArgumentException e) {
+				assertThat( complianceEnabled ).isTrue();
+				assertThat( e.getCause() ).isInstanceOf( StrictJpaComplianceViolation.class );
+			}
+			catch (StrictJpaComplianceViolation complianceViolation) {
+				// we expect this with compliance enabled
+				assertThat( complianceEnabled ).isTrue();
+			}
 		} );
 	}
 
 	@Test
-	@AnalysisItem( id = 24, feature = "JPQL FUNCTION(...)", description = "Dialect-specific function support",
-			behavioralDifference = "EclipseLink accepts DB functions directly; Hibernate needs explicit registration")
-	void testOrderByHql3(SessionFactoryScope factoryScope) {
+	void testCompliantOrderBy(SessionFactoryScope factoryScope) {
 		factoryScope.inTransaction( (session) -> {
-			session.createQuery( "from Book order by function( 'dbo.multiplied_number' as int, 2)" ).list();
+			// just making sure it executes correctly...
+			session.createQuery( "select b from Book b order by function( 'dbo.constant_number' as int)" ).list();
+			session.createQuery( "select b from Book b order by function( 'dbo.multiplied_number' as int, 2)" ).list();
 		} );
 	}
 
 	@Test
-	void testOrderByCriteria(SessionFactoryScope factoryScope) {
+	void testOrderByNoArgFunctionCriteria(SessionFactoryScope factoryScope) {
 		factoryScope.inTransaction( (session) -> {
+			// just making sure it executes correctly...
 			var criteriaBuilder = session.getCriteriaBuilder();
 			var criteria = criteriaBuilder.createQuery( Book.class );
 			var func = criteriaBuilder.function( "dbo.constant_number", Integer.class );
@@ -132,8 +204,9 @@ public class QueryFunctionTests {
 	}
 
 	@Test
-	void testOrderByCriteria2(SessionFactoryScope factoryScope) {
+	void testOrderByArgFunctionCriteria(SessionFactoryScope factoryScope) {
 		factoryScope.inTransaction( (session) -> {
+			// just making sure it executes correctly...
 			var criteriaBuilder = session.getCriteriaBuilder();
 			var criteria = criteriaBuilder.createQuery( Book.class );
 			var func = criteriaBuilder.function( "dbo.multiplied_number", Integer.class, criteriaBuilder.literal( 2 ) );
@@ -145,36 +218,52 @@ public class QueryFunctionTests {
 	}
 
 	@Test
-	@AnalysisItem( id = 31, feature = "DB Functions", description = "Dialect dependency",
-			behavioralDifference = "EclipseLink accepts DB functions directly; Hibernate needs dialect support")
-	@FailureExpected(reason = "One of the (few) places where this will fail - Hibernate wants to check the comparison types")
-	void testComparisonHql(SessionFactoryScope factoryScope) {
+	void testOrderByNoArgFunction(SessionFactoryScope factoryScope) {
 		factoryScope.inTransaction( (session) -> {
-			session.createQuery( "from Book where id = dbo.constant_number()" ).list();
+			try {
+				session.createQuery( "select b from Book b order by dbo.constant_number()" ).list();
+				if ( complianceEnabled ) {
+					fail( "Expecting a compliance failure" );
+				}
+			}
+			catch (IllegalArgumentException iae) {
+				assertThat( complianceEnabled ).isTrue();
+				assertThat( iae.getCause() ).isInstanceOf( StrictJpaComplianceViolation.class );
+			}
+			catch (StrictJpaComplianceViolation complianceViolation) {
+				assertThat( complianceEnabled ).isTrue();
+			}
 		} );
 	}
 
 	@Test
-	@AnalysisItem( id = 31, feature = "DB Functions", description = "Dialect dependency",
-			behavioralDifference = "EclipseLink accepts DB functions directly; Hibernate needs dialect support")
-	@FailureExpected(reason = "One of the (few) places where this will fail - Hibernate wants to check the comparison types")
-	void testComparisonHql2(SessionFactoryScope factoryScope) {
+	void testOrderByArgFunction(SessionFactoryScope factoryScope) {
 		factoryScope.inTransaction( (session) -> {
-			session.createQuery( "from Book where id = dbo.multiplied_number(2)" ).list();
+			try {
+				session.createQuery( "select b from Book b order by dbo.multiplied_number(2)" ).list();
+				if ( complianceEnabled ) {
+					fail( "Expecting a compliance failure" );
+				}
+			}
+			catch (IllegalArgumentException iae) {
+				assertThat( complianceEnabled ).isTrue();
+				assertThat( iae.getCause() ).isInstanceOf( StrictJpaComplianceViolation.class );
+			}
+			catch (StrictJpaComplianceViolation complianceViolation) {
+				assertThat( complianceEnabled ).isTrue();
+			}
 		} );
 	}
 
 	@Test
-	@AnalysisItem( id = 24, feature = "JPQL FUNCTION(...)", description = "Dialect-specific function support",
-			behavioralDifference = "EclipseLink accepts DB functions directly; Hibernate needs explicit registration")
-	void testComparisonHql3(SessionFactoryScope factoryScope) {
+	void testCompliantComparison(SessionFactoryScope factoryScope) {
 		factoryScope.inTransaction( (session) -> {
-			session.createQuery( "from Book where id = function( 'dbo.multiplied_number' as int, 2)" ).list();
+			session.createQuery( "select b from Book b where b.id = function( 'dbo.multiplied_number' as int, 2)" ).list();
 		} );
 	}
 
 	@Test
-	void testComparisonCriteria(SessionFactoryScope factoryScope) {
+	void testNoArgFunctionComparisonCriteria(SessionFactoryScope factoryScope) {
 		factoryScope.inTransaction( (session) -> {
 			var criteriaBuilder = session.getCriteriaBuilder();
 			var criteria = criteriaBuilder.createQuery( Book.class );
@@ -187,7 +276,7 @@ public class QueryFunctionTests {
 	}
 
 	@Test
-	void testComparisonCriteria2(SessionFactoryScope factoryScope) {
+	void testArgFunctionComparisonCriteria(SessionFactoryScope factoryScope) {
 		factoryScope.inTransaction( (session) -> {
 			var criteriaBuilder = session.getCriteriaBuilder();
 			var criteria = criteriaBuilder.createQuery( Book.class );
@@ -196,6 +285,52 @@ public class QueryFunctionTests {
 			criteria.where( criteriaBuilder.equal( root.get( "id" ), func ) );
 
 			session.createQuery( criteria ).list();
+		} );
+	}
+
+	/// Tests restrictions based on an unregistered function with no args.
+	///
+	/// @implNote This is not allowed as Hibernate wants to validate the
+	/// left- and right-hand sides for "compatibility".
+	@Test
+	void testNoArgFunctionComparison(SessionFactoryScope factoryScope) {
+		factoryScope.inTransaction( (session) -> {
+			try {
+				session.createQuery( "select b from Book b where b.id = dbo.constant_number()" ).list();
+				fail( "Expecting failure" );
+			}
+			catch (IllegalArgumentException e) {
+				if ( complianceEnabled ) {
+					assertThat( e.getCause() ).isInstanceOf( StrictJpaComplianceViolation.class );
+				}
+				else {
+					assertThat( e.getCause() ).isInstanceOf( SemanticException.class );
+					assertThat( e.getCause().getMessage() ).startsWith( "Cannot compare " );
+				}
+			}
+		} );
+	}
+
+	/// Tests restrictions based on an unregistered function with args.
+	///
+	/// @implNote This is not allowed as Hibernate wants to validate the
+	/// left- and right-hand sides for "compatibility".
+	@Test
+	void testArgFunctionComparison(SessionFactoryScope factoryScope) {
+		factoryScope.inTransaction( (session) -> {
+			try {
+				session.createQuery( "select b from Book b where b.id = dbo.multiplied_number(2)" ).list();
+				fail( "Expecting a compliance failure" );
+			}
+			catch (IllegalArgumentException e) {
+				if ( complianceEnabled ) {
+					assertThat( e.getCause() ).isInstanceOf( StrictJpaComplianceViolation.class );
+				}
+				else {
+					assertThat( e.getCause() ).isInstanceOf( SemanticException.class );
+					assertThat( e.getCause().getMessage() ).startsWith( "Cannot compare " );
+				}
+			}
 		} );
 	}
 
@@ -235,12 +370,15 @@ public class QueryFunctionTests {
 
 	@AfterEach
 	void tearDown(SessionFactoryScope factoryScope) {
-		factoryScope.inTransaction( (session) -> session.doWork( (connection) -> {
-			try (Statement statement = connection.createStatement() ) {
-				statement.execute( "drop function constant_number" );
-				statement.execute( "drop function multiplied_number" );
-			}
-		} ) );
-		factoryScope.getSessionFactory().getSchemaManager().truncateMappedObjects();
+		factoryScope.inTransaction( (session) -> {
+			session.doWork( (connection) -> {
+				try (Statement statement = connection.createStatement() ) {
+					statement.execute( "drop function constant_number" );
+					statement.execute( "drop function multiplied_number" );
+				}
+			} );
+
+			session.getSessionFactory().getSchemaManager().truncateMappedObjects();
+		} );
 	}
 }
