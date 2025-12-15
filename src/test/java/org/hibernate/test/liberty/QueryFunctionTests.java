@@ -73,24 +73,6 @@ public class QueryFunctionTests implements ServiceRegistryProducer {
 		// nothing to do
 	}
 
-	private void inSession(boolean complianceEnabled, Consumer<Session> action) {
-		inSession( true, complianceEnabled, action );
-	}
-
-	private void inSession(boolean createSchema, boolean complianceEnabled, Consumer<Session> action) {
-		final StandardServiceRegistryBuilder registryBuilder = new StandardServiceRegistryBuilder()
-				.applySetting( SchemaToolingSettings.HBM2DDL_AUTO, createSchema ? "create-drop" : "" )
-				.applySetting( JpaComplianceSettings.JPA_QUERY_COMPLIANCE, complianceEnabled );
-		try (var registry = registryBuilder.build()) {
-			final Metadata metadata = new MetadataSources( registry ).addAnnotatedClasses( Book.class ).buildMetadata();
-			try (var sessionFactory = metadata.getSessionFactoryBuilder().build()) {
-				try (var session = sessionFactory.openSession()) {
-					action.accept( session );
-				}
-			}
-		}
-	}
-
 	@Test
 	void testCompliantSelection(SessionFactoryScope factoryScope) {
 		factoryScope.inTransaction( (session) -> {

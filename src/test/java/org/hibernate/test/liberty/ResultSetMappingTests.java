@@ -31,6 +31,20 @@ public class ResultSetMappingTests {
 	}
 
 	@Test
+	@AnalysisItem( id = 13, feature = "Native query result mapping", description = "Using resultClass without full mapping",
+			behavioralDifference = "EclipseLink accepts partial mapping; Hibernate requires full match")
+
+	void testPartialResultClassMapping(SessionFactoryScope factoryScope) {
+		// test a partial mapping
+		factoryScope.inTransaction( (session) -> {
+			final List<Book> books = session.createNativeQuery( "select id, title, isbn from books", Book.class ).list();
+			assertThat( books ).hasSize( 1 );
+			assertThat( books.getFirst().getId() ).isEqualTo( 1 );
+			assertThat( books.getFirst().getTitle() ).isEqualTo( "Pet Cemetery" );
+		} );
+	}
+
+	@Test
 	@AnalysisItem( id = 14, feature = "@NamedNativeQuery result mapping", description = "Native query with resultClass",
 			behavioralDifference = "EclipseLink accepts flexible mapping; Hibernate requires exact match")
 	void testNamedNativeQueryResultClass(SessionFactoryScope factoryScope) {
