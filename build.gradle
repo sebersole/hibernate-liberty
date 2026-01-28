@@ -1,32 +1,18 @@
-plugins {
-	id 'java'
+allprojects {
+    group = 'org.hibernate.models'
+    version = '1.0-SNAPSHOT'
+    
+    repositories {
+        mavenCentral()
+    }
 }
 
-group = 'org.hibernate.models'
-version = '1.0-SNAPSHOT'
-
-repositories {
-	mavenCentral()
-}
-
-def ormVersion = "7.0.9.Final"
-//def ormVersion = "7.2.0.CR2"
-
-dependencies {
-	implementation "org.hibernate.orm:hibernate-core:${ormVersion}"
-
-	testImplementation "org.hibernate.orm:hibernate-testing:${ormVersion}"
-	testImplementation 'org.junit.jupiter:junit-jupiter:5.10.0'
-	testImplementation "org.assertj:assertj-core:3.26.3"
-
-	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-
-	testRuntimeOnly 'com.h2database:h2:2.4.240'
-	testRuntimeOnly 'com.microsoft.sqlserver:mssql-jdbc:13.2.1.jre11'
-
-	testRuntimeOnly "org.apache.logging.log4j:log4j-core:2.24.3"
-}
-
-test {
-	useJUnitPlatform()
+subprojects {
+    apply plugin: 'java'
+    apply plugin: 'java-library'
+    
+    ext {
+        ormVersion = "7.0.9.Final"
+        //ormVersion = "7.2.0.CR2"
+    }
 }

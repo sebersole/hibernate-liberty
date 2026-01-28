@@ -1,0 +1,74 @@
+plugins {
+    id 'war'
+    alias libs.plugins.liberty.plugin
+}
+
+configurations {
+    postgres
+    hibernate
+}
+
+dependencies {
+    //Hibernate uses transitive dependencies for Jakarta API instead of provided dependencies.
+    def withoutJakartaAPI = {
+        exclude group: 'jakarta.activation', module: 'jakarta.activation-api'
+        exclude group: 'jakarta.inject', module: 'jakarta.inject-api'
+        exclude group: 'jakarta.persistence', module: 'jakarta.persistence-api'
+        exclude group: 'jakarta.transaction', module: 'jakarta.transaction-api'
+        exclude group: 'jakarta.xml.bind', module: 'jakarta.xml.bind-api'
+    }
+
+    api libs.jakarta.api
+
+    postgres libs.postgresql.jdbc
+    hibernate libs.bundles.hibernate, withoutJakartaAPI
+
+    libertyRuntime libs.liberty.runtime
+}
+
+task copyDriver(type: Copy) {
+    from configurations.postgres
+    include '**/*.jar'
+    into 'src/main/liberty/config/resources/postgresql'
+}
+
+task copyHibernate(type: Copy) {
+    from configurations.hibernate
+    include '**/*.jar'
+    into 'src/main/liberty/config/resources/hibernate'
+}
+
+war {
+    archiveFileName = 'testApplication.war'
+}
+
+task startPostgres(type: Exec) {
+    commandLine 'docker', 'run', \
+        '--name', 'postgres', \
+        '-p', '5432:5432', \
+        '-e', 'POSTGRES_PASSWORD=password', \
+        '-e', 'POSTGRES_DB=testDB', \
+        '-d', 'postgres:18-alpine'
+}
+task stopPostgres(type: Exec) {
+    commandLine 'docker', 'rm', '-f', 'postgres'
+}
+
+liberty {
+    server {
+        name = 'defaultServer'
+        configDirectory = file('src/main/liberty/config')
+        serverXmlFile = file('src/main/liberty/config/server.xml')
+        bootstrapProperties = [
+            'default.http.port': '9080',
+            'default.https.port': '9443',
+        ]
+    }
+}
+
+// Ensure dependencies are copied before Liberty tasks
+libertyDev.dependsOn 'copyDriver', 'copyHibernate', 'startPostgres'
+libertyStop.finalizedBy 'stopPostgres'
+
+
+test.outputs.upToDateWhen { false }

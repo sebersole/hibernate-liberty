@@ -1,0 +1,25 @@
+<server>
+
+  <featureManager>
+    <feature>restfulWS-4.0</feature>
+    <feature>cdi-4.1</feature>
+    <feature>persistenceContainer-3.2</feature>
+    
+    <!-- Features required by Hibernate -->
+    <feature>xmlBinding-4.0</feature>
+  </featureManager>
+
+  <application location="testApplication.war">
+    <classloader commonLibraryRef="HibernateLib"/>
+  </application>
+
+    <dataSource id="DefaultDataSource">
+        <jdbcDriver libraryRef="HibernateLib"/>
+        <properties serverName="localhost" portNumber="5432" user="postgres" password="password" databaseName="testDB"/>
+    </dataSource>
+
+  <library id="HibernateLib">
+    <fileset dir="${server.config.dir}/resources/postgresql" includes="*.jar"/>
+    <fileset dir="${server.config.dir}/resources/hibernate" includes="*.jar"/>
+  </library>
+</server>
