@@ -1,10 +1,10 @@
 allprojects {
-	group = 'org.hibernate.models'
-	version = '1.0-SNAPSHOT'
-	
-	repositories {
-		mavenCentral()
-	}
+    group = 'org.hibernate.models'
+    version = '1.0-SNAPSHOT'
+    
+    repositories {
+        mavenCentral()
+    }
 }
 
 subprojects {
@@ -12,7 +12,7 @@ subprojects {
     apply plugin: 'java-library'
     
     ext {
-		ormVersion = "7.0.9.Final"
-		//ormVersion = "7.2.0.CR2"
-	}
+        ormVersion = "7.0.9.Final"
+        //ormVersion = "7.2.0.CR2"
+    }
 }

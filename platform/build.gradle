@@ -1,6 +1,6 @@
 plugins {
-	id 'war'
-	alias libs.plugins.liberty.plugin
+    id 'war'
+    alias libs.plugins.liberty.plugin
 }
 
 configurations {
