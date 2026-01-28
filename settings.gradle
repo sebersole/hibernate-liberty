@@ -1,1 +1,4 @@
 rootProject.name = 'liberty'
+
+include 'platform'
+include 'standalone'
