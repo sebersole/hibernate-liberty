@@ -1,0 +1,21 @@
+<persistence xmlns="https://jakarta.ee/xml/ns/persistence"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xsi:schemaLocation="https://jakarta.ee/xml/ns/persistence https://jakarta.ee/xml/ns/persistence/persistence_3_2.xsd"
+             version="3.2">
+
+    <persistence-unit name="HibernatePersistenceUnit">
+        <provider>org.hibernate.jpa.HibernatePersistenceProvider</provider>
+        <jta-data-source>java:comp/DefaultDataSource</jta-data-source>
+        <class>org.hibernate.test.liberty.Person</class>
+        <properties>
+            <property name="jakarta.persistence.schema-generation.database.action" value="create"/>
+            <property name="hibernate.show_sql" value="true"/>
+            <!-- TODO remove once https://hibernate.atlassian.net/jira/software/c/projects/HHH/issues/HHH-18260 is fixed -->
+            <property name="hibernate.allow_update_outside_transaction" value="true"/>
+            <property name="hibernate.delay_cdi_access" value="true" />
+            <!-- Disable Bean Validation as it is not necessary for this test -->
+            <property name="jakarta.persistence.validation.mode" value="none"/>
+        </properties>
+    </persistence-unit>
+
+</persistence>
