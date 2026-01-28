@@ -1,0 +1,30 @@
+[versions]
+# BOMs
+junit = "5.13.4"
+
+# Specifications
+jakarta = "11.0.0"
+
+# Other libraries
+postgresql = "42.7.9"
+hibernate = "7.0.9.Final"
+liberty = "26.0.0.2-beta"
+liberty-dev = "3.9.6"
+
+[libraries]
+# Jakarta EE
+jakarta-api =     { module = "jakarta.platform:jakarta.jakartaee-api", version.ref = "jakarta" }
+
+# Standalone libraries
+postgresql-jdbc =        { group = "org.postgresql", name = "postgresql", version.ref = "postgresql" }
+hibernate-orm =          { group = "org.hibernate.orm", name = "hibernate-core", version.ref = "hibernate" }
+hibernate-jandex =       { group = "org.hibernate.orm", name = "hibernate-scan-jandex", version.ref = "hibernate" }
+
+# Platform
+liberty-runtime = { group = "io.openliberty.beta", name = "openliberty-runtime", version.ref = "liberty" }
+
+[bundles]
+hibernate = ["hibernate-orm", "hibernate-jandex"]
+
+[plugins]
+liberty-plugin = { id = "io.openliberty.tools.gradle.Liberty", version.ref = "liberty-dev" }
